@@ -1,3 +1,4 @@
+use futures::future::TryJoinAll;
 use futures::{Future, Stream};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -12,11 +13,18 @@ pub struct State {
 
 pub struct MarkovMachine<'a> {
     futures: Vec<&'a mut State>,
+    transition_matrix: [[f32; 3]; 3]
 }
 
 impl<'a> MarkovMachine<'a> {
     fn new(futures: Vec<&'a mut State>)-> Self {
+    let transition_matrix: [[f32; 3]; 3] = [
+        [0.2, 0.3, 0.5],
+        [0.6, 0.2, 0.2],
+        [0.1, 0.4, 0.5],
+    ];
         MarkovMachine {
+            transition_matrix: transition_matrix,
             futures: futures,
         }
     }

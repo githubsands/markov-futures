@@ -44,16 +44,6 @@ impl<'a> MarkovMachine<'a> {
     }
 }
 
-impl Future for State {
-    type Output = &'static str;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<&'static str> {
-        if self.state == 1 {
-            Poll::Ready("ready");
-        }
-        Poll::Pending
-    }
-}
-
 impl Stream for State {
     type Item = &'static str;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<&'static str>> {

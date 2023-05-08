@@ -3,6 +3,7 @@ use futures::{Future, Stream, Sink};
 use std::pin::Pin;
 use std::io::Error;
 use std::task::{Context, Poll};
+use tokio::sync::mpsc::{self, Sender, Receiver};
 
 trait MarkovState {
     fn set_state(&self, state: u8) -> Result<(), Error>;
@@ -11,7 +12,8 @@ trait MarkovState {
 }
 
 pub struct State {
-    state: u8
+    state: u8,
+    receiver: Receiver<u8>,
 }
 
 pub struct MarkovMachine<'a> {
@@ -19,29 +21,26 @@ pub struct MarkovMachine<'a> {
     transition_matrix: [[f32; 3]; 3],
     buffer: [u8; 9],
     buffer_position: usize,
+    receiver: Receiver<u8>,
 }
 
 impl<'a> MarkovMachine<'a> {
-    fn new(futures: Vec<&'a mut State>) -> Self {
-    let transition_matrix: [[f32; 3]; 3] = [
-        [0.2, 0.3, 0.5],
-        [0.6, 0.2, 0.2],
-        [0.1, 0.4, 0.5],
-    ];
-        MarkovMachine {
+    fn new(futures: Vec<&'a mut State>) -> (Self, Sender<u8>) {
+        let transition_matrix: [[f32; 3]; 3] = [
+            [0.2, 0.3, 0.5],
+            [0.6, 0.2, 0.2],
+            [0.1, 0.4, 0.5],
+        ];
+        let (sender, receiver) = mpsc::channel(100);
+        let markov_machine = MarkovMachine {
             transition_matrix: transition_matrix,
             futures: futures,
             buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0],
             buffer_position: 0,
-        }
-    }
-}
+            receiver,
+        };
 
-impl State {
-    fn new(initial_state: u8) -> Self {
-        State {
-            state: initial_state,
-        }
+        (markov_machine, sender)
     }
 }
 
@@ -68,7 +67,6 @@ impl Stream for State {
 impl Sink<u8> for MarkovMachine<'_> {
     type Error = Error;
 
-    // Required methods
     fn poll_ready(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>
@@ -117,9 +115,4 @@ impl Sink<u8> for MarkovMachine<'_> {
 
 
 fn main() {
-    let mut state_1 = State::new(1);
-    let mut state_2 = State::new(2);
-    let mut state_3 = State::new(3);
-    let mut states  = vec!(&mut state_1, &mut state_2, &mut state_3);
-    let markov_machine = MarkovMachine::new(states);
 }

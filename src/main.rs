@@ -7,6 +7,12 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task;
 
+struct StateMsg {
+    state: [u8; 2],
+    x: f32,
+    y: f32,
+}
+
 trait MarkovState {
     fn set_state(&self, state: u8) -> Result<(), Error>;
     fn state(&self) -> &u8;
@@ -16,6 +22,10 @@ trait MarkovState {
 pub struct State {
     state: [u8; 2],
     producer: Option<Sender<StateMsg>>,
+}
+
+enum StateErr {
+    SendFail,
 }
 
 impl State {
@@ -28,13 +38,23 @@ impl State {
     fn add_producer(&mut self, producer: Sender<StateMsg>) {
         self.producer = Some(producer)
     }
+    async fn send_state(&mut self) -> Result<(), StateErr> {
+        let producer = self.producer.as_mut();
+        let res = producer
+            .unwrap()
+            .send(StateMsg {
+                state: self.state,
+                x: 14.0,
+                y: 12.0,
+            })
+            .await;
+        match res {
+            Ok(_) => return Ok(()),
+            Err(..) => Err(StateErr::SendFail),
+        }
+    }
 }
 
-struct StateMsg {
-    state: usize,
-    x: f32,
-    y: f32,
-}
 /*
 impl Stream for State {
     type Item = &'static str;
@@ -78,7 +98,9 @@ impl<'a> MarkovMachine<'a> {
         self.futures = Some(states)
     }
     async fn update_transition_probabilities(&mut self) {
+        println!("waiting on state");
         while let Some(parameters) = self.receiver.recv().await {
+            println!("updating state");
             let result = task::spawn_blocking(move || compute(parameters.x, parameters.y)).await;
         }
     }
@@ -129,10 +151,12 @@ impl Sink<u8> for MarkovMachine<'_> {
 }
 */
 
-fn main() {
-    let (markov_machine, producer) = MarkovMachine::new();
+#[tokio::main]
+async fn main() {
+    let (mut markov_machine, producer) = MarkovMachine::new();
     let states: Vec<State> = Vec::new();
     for i in 0..markov_machine.states() {
         let state = State::new([0, 0]).add_producer(producer.clone());
     }
+    markov_machine.update_transition_probabilities().await;
 }

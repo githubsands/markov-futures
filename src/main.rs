@@ -67,7 +67,7 @@ impl<'a> MarkovMachine<'a> {
         let length_height = self.transition_matrix.len();
         return length_width * length_height;
     }
-    fn add_states(&self, states: Vec<&'a mut State>) {
+    fn add_states(&mut self, states: Vec<&'a mut State>) {
         self.futures = Some(states)
     }
 }

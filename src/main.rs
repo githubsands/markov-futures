@@ -91,7 +91,7 @@ impl Sink<u8> for MarkovMachine<'_> {
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(self: Pin<&mut Self:>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.get_mut();
         if this.buffer_position == this.buffer.len() {
             println!("Flushing buffer: {:?}", this.buffer);

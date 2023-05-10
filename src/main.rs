@@ -40,7 +40,7 @@ impl Stream for State {
 }
 
 pub struct MarkovMachine<'a> {
-    futures: Vec<&'a mut State>,
+    futures: Option<Vec<&'a mut State>>,
     transition_matrix: [[f32; 3]; 3],
     buffer: [u8; 9],
     buffer_position: usize,
@@ -48,12 +48,12 @@ pub struct MarkovMachine<'a> {
 }
 
 impl<'a> MarkovMachine<'a> {
-    fn new(futures: Vec<&'a mut State>) -> (Self, Sender<u8>) {
+    fn new() -> (Self, Sender<u8>) {
         let transition_matrix: [[f32; 3]; 3] = [[0.2, 0.3, 0.5], [0.6, 0.2, 0.2], [0.1, 0.4, 0.5]];
         let (sender, receiver) = channel(100);
         let markov_machine = MarkovMachine {
             transition_matrix: transition_matrix,
-            futures: futures,
+            futures: None,
             buffer: [0, 0, 0, 0, 0, 0, 0, 0, 0],
             buffer_position: 0,
             receiver,
@@ -65,6 +65,9 @@ impl<'a> MarkovMachine<'a> {
         let length_width = self.transition_matrix[0].len();
         let length_height = self.transition_matrix.len();
         return length_width*length_height
+    }
+    fn add_states(&self, states: Vec<&'a mut State>) {
+        self.futures = Some(states)
     }
 }
 
@@ -108,4 +111,4 @@ impl Sink<u8> for MarkovMachine<'_> {
 }
 
 fn main() {
-    let markov_machine = MarkovMachine::new(
+    let markov_machine = MarkovMachine::new();

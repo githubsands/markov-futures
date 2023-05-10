@@ -1,9 +1,11 @@
 use futures::future::TryJoinAll;
+use futures::StreamExt;
 use futures::{Future, Sink, Stream};
 use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::task;
 
 trait MarkovState {
     fn set_state(&self, state: u8) -> Result<(), Error>;
@@ -13,7 +15,7 @@ trait MarkovState {
 
 pub struct State {
     state: [u8; 2],
-    producer: Option<Sender<[f32; 2]>>,
+    producer: Option<Sender<StateMsg>>,
 }
 
 impl State {
@@ -23,11 +25,16 @@ impl State {
             producer: None,
         }
     }
-    fn add_producer(&mut self, producer: Sender<[f32; 2]>) {
+    fn add_producer(&mut self, producer: Sender<StateMsg>) {
         self.producer = Some(producer)
     }
 }
 
+struct StateMsg {
+    state: usize,
+    x: f32,
+    y: f32,
+}
 /*
 impl Stream for State {
     type Item = &'static str;
@@ -45,11 +52,11 @@ pub struct MarkovMachine<'a> {
     transition_matrix: [[f32; 3]; 3],
     buffer: [u8; 9],
     buffer_position: usize,
-    receiver: Receiver<[f32; 2]>,
+    receiver: Receiver<StateMsg>,
 }
 
 impl<'a> MarkovMachine<'a> {
-    fn new() -> (Self, Sender<[f32; 2]>) {
+    fn new() -> (Self, Sender<StateMsg>) {
         let transition_matrix: [[f32; 3]; 3] = [[0.2, 0.3, 0.5], [0.6, 0.2, 0.2], [0.1, 0.4, 0.5]];
         let (sender, receiver) = channel(1);
         let markov_machine = MarkovMachine {
@@ -70,6 +77,15 @@ impl<'a> MarkovMachine<'a> {
     fn add_states(&mut self, states: Vec<&'a mut State>) {
         self.futures = Some(states)
     }
+    async fn update_transition_probabilities(&mut self) {
+        while let Some(parameters) = self.receiver.recv().await {
+            let result = task::spawn_blocking(move || compute(parameters.x, parameters.y)).await;
+        }
+    }
+}
+
+fn compute(x: f32, y: f32) -> f32 {
+    x / y
 }
 
 /*

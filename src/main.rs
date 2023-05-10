@@ -1,9 +1,9 @@
 use futures::future::TryJoinAll;
-use futures::{Future, Stream, Sink};
-use std::pin::Pin;
+use futures::{Future, Sink, Stream};
 use std::io::Error;
+use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::sync::mpsc::{self, Sender, Receiver};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 trait MarkovState {
     fn set_state(&self, state: u8) -> Result<(), Error>;
@@ -12,8 +12,31 @@ trait MarkovState {
 }
 
 pub struct State {
-    state: u8,
-    receiver: Receiver<u8>,
+    state: [u8; 2],
+    producer: Option<Sender<[u8; 2]>>,
+}
+
+impl State {
+    fn new(state: [u8; 2]) -> Self {
+        Self {
+            state: state,
+            producer: None,
+        }
+    }
+    fn add_producer(&mut self, producer: Sender<[u8; 2]>) {
+        self.producer = Some(producer)
+    }
+}
+
+
+impl Stream for State {
+    type Item = &'static str;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<&'static str>> {
+        if self.state == 1 {
+            Poll::Ready("ready");
+        }
+        Poll::Pending
+    }
 }
 
 pub struct MarkovMachine<'a> {
@@ -26,12 +49,8 @@ pub struct MarkovMachine<'a> {
 
 impl<'a> MarkovMachine<'a> {
     fn new(futures: Vec<&'a mut State>) -> (Self, Sender<u8>) {
-        let transition_matrix: [[f32; 3]; 3] = [
-            [0.2, 0.3, 0.5],
-            [0.6, 0.2, 0.2],
-            [0.1, 0.4, 0.5],
-        ];
-        let (sender, receiver) = mpsc::channel(100);
+        let transition_matrix: [[f32; 3]; 3] = [[0.2, 0.3, 0.5], [0.6, 0.2, 0.2], [0.1, 0.4, 0.5]];
+        let (sender, receiver) = channel(100);
         let markov_machine = MarkovMachine {
             transition_matrix: transition_matrix,
             futures: futures,
@@ -42,25 +61,17 @@ impl<'a> MarkovMachine<'a> {
 
         (markov_machine, sender)
     }
-}
-
-impl Stream for State {
-    type Item = &'static str;
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<&'static str>> {
-        if self.state == 1 {
-            Poll::Ready("ready");
-        }
-        Poll::Pending
+    fn states(&self) -> usize {
+        let length_width = self.transition_matrix[0].len();
+        let length_height = self.transition_matrix.len();
+        return length_width*length_height
     }
 }
 
 impl Sink<u8> for MarkovMachine<'_> {
     type Error = Error;
 
-    fn poll_ready(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.get_mut();
         if this.buffer_position < this.buffer.len() {
             Poll::Ready(Ok(()))
@@ -80,10 +91,7 @@ impl Sink<u8> for MarkovMachine<'_> {
         }
     }
 
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.get_mut();
         if this.buffer_position == this.buffer.len() {
             println!("Flushing buffer: {:?}", this.buffer);
@@ -94,15 +102,10 @@ impl Sink<u8> for MarkovMachine<'_> {
         }
     }
 
-    fn poll_close(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 }
 
-
-
 fn main() {
-}
+    let markov_machine = MarkovMachine::new(
